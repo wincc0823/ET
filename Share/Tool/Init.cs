@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using CommandLine;
 
@@ -16,31 +17,20 @@ namespace ET.Server
             
             try
             {
-                // 异步方法全部会回掉到主线程
-                Game.AddSingleton<MainThreadSynchronizationContext>();
-				
                 // 命令行参数
                 Parser.Default.ParseArguments<Options>(args)
                     .WithNotParsed(error => throw new Exception($"命令行格式错误! {error}"))
-                    .WithParsed(Game.AddSingleton);
-				
-                Game.AddSingleton<TimeInfo>();
-                Game.AddSingleton<Logger>().ILog = new NLogger(Options.Instance.AppType.ToString(), Options.Instance.Process, "../Config/NLog/NLog.config");
-                Game.AddSingleton<ObjectPool>();
-                Game.AddSingleton<IdGenerater>();
+                    .WithParsed((o)=>World.Instance.AddSingleton(o));
+                World.Instance.AddSingleton<Logger>().ILog = new NLogger(Options.Instance.AppType.ToString(), Options.Instance.Process, "../Config/NLog/NLog.config");
+                
+                World.Instance.AddSingleton<CodeTypes, Assembly[]>(new[] { typeof (Init).Assembly });
+                World.Instance.AddSingleton<EventSystem>();
+                
+                MongoHelper.Register();
                 
                 ETTask.ExceptionHandler += Log.Error;
                 
-                Game.AddSingleton<EventSystem>();
-                Dictionary<string, Type> types = AssemblyHelper.GetAssemblyTypes(typeof (Game).Assembly);
-                EventSystem.Instance.Add(types);
-                
-                Game.AddSingleton<Root>();
-
-                MongoHelper.Init();
-                ProtobufHelper.Init();
-				
-                Log.Info($"server start........................ {Root.Instance.Scene.Id}");
+                Log.Info($"server start........................ ");
 				
                 switch (Options.Instance.AppType)
                 {
