@@ -10,9 +10,8 @@ namespace ET.Client
         {
 	        try
 	        {
-		        ResourcesComponent resourcesComponent = uiComponent.Root().GetComponent<ResourcesComponent>();
-		        await uiComponent.Scene().GetComponent<ResourcesLoaderComponent>().LoadAsync(resourcesComponent.StringToAB(UIType.UIHelp));
-		        GameObject bundleGameObject = (GameObject) resourcesComponent.GetAsset(resourcesComponent.StringToAB(UIType.UIHelp), UIType.UIHelp);
+		        string assetsName = $"Assets/Bundles/UI/Demo/{UIType.UIHelp}.prefab";
+		        GameObject bundleGameObject = await uiComponent.Scene().GetComponent<ResourcesLoaderComponent>().LoadAssetAsync<GameObject>(assetsName);
 		        GameObject gameObject = UnityEngine.Object.Instantiate(bundleGameObject, uiComponent.UIGlobalComponent.GetLayer((int)uiLayer));
 		        UI ui = uiComponent.AddChild<UI, string, GameObject>(UIType.UIHelp, gameObject);
 
@@ -21,7 +20,7 @@ namespace ET.Client
 	        }
 	        catch (Exception e)
 	        {
-				Log.Error(e);
+		        Log.Error(e);
 		        return null;
 	        }
 		}

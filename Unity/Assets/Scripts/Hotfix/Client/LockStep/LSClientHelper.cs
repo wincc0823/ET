@@ -88,6 +88,7 @@ namespace ET.Client
             {
                 return;
             }
+            
             Log.Debug($"save replay: {path} frame: {room.Replay.FrameInputs.Count}");
             byte[] bytes = MemoryPackHelper.Serialize(room.Replay);
             File.WriteAllBytes(path, bytes);

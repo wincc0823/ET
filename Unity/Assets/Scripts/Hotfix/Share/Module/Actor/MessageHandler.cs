@@ -53,7 +53,7 @@ namespace ET
             try
             {
                 using MessageObject _ = actorMessage;
-                
+                Fiber fiber = entity.Fiber();
                 if (actorMessage is not Request request)
                 {
                     Log.Error($"消息类型转换错误: {actorMessage.GetType().FullName} to {typeof (Request).Name}");
@@ -68,7 +68,6 @@ namespace ET
 
                 int rpcId = request.RpcId;
                 Response response = ObjectPool.Instance.Fetch<Response>();
-                Fiber fiber = entity.Fiber();
                 try
                 {
                     await this.Run(ee, request, response);
@@ -85,7 +84,7 @@ namespace ET
                 }
                 
                 response.RpcId = rpcId;
-                fiber.MessageInnerSender.Reply(fromAddress, response);
+                fiber.ProcessInnerSender.Reply(fromAddress, response);
             }
             catch (Exception e)
             {

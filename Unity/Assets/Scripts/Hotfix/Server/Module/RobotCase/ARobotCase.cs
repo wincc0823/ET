@@ -8,16 +8,15 @@ namespace ET.Server
 
         public override async ETTask Handle(RobotInvokeArgs a)
         {
-            using RobotCase robotCase = await RobotCaseComponent.Instance.New();
-            
+            using RobotCase robotCase = await a.Fiber.Root.GetComponent<RobotCaseComponent>().New();
             try
             {
                 await this.Run(robotCase);
             }
             catch (System.Exception e)
             {
-                Log.Error($"{robotCase.DomainZone()} {e}");
-                RobotLog.Console($"RobotCase Error {this.GetType().FullName}:\n\t{e}");
+                Log.Error($"{robotCase.Zone()} {e}");
+                Log.Console($"RobotCase Error {this.GetType().FullName}:\n\t{e}");
             }
         }
     }

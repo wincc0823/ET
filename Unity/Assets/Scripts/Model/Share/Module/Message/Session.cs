@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 
@@ -134,8 +135,10 @@ namespace ET
         public static void Send(this Session self, ActorId actorId, IMessage message)
         {
             self.LastSendTime = TimeInfo.Instance.ClientNow();
-            LogMsg.Instance.Debug(message);
-            self.AService.Send(self.Id, actorId, message as MessageObject);
+            LogMsg.Instance.Debug(self.Fiber(), message);
+
+            (ushort opcode, MemoryBuffer memoryBuffer) = MessageSerializeHelper.ToMemoryBuffer(self.AService, actorId, message);
+            self.AService.Send(self.Id, memoryBuffer);
         }
     }
 
@@ -170,7 +173,7 @@ namespace ET
             set;
         }
 
-        public IPEndPoint RemoteAddress
+        public string RemoteAddress
         {
             get;
             set;

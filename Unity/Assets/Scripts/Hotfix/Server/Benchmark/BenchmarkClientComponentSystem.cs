@@ -10,7 +10,7 @@ namespace ET.Server
         [EntitySystem]
         private static void Awake(this BenchmarkClientComponent self)
         {
-            for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < 2; ++i)
             {
                 self.Start().Coroutine();
             }
@@ -18,7 +18,7 @@ namespace ET.Server
 
         private static async ETTask Start(this BenchmarkClientComponent self)
         {
-            NetClientComponent netClientComponent = self.Root().GetComponent<NetClientComponent>();
+            NetComponent netClientComponent = self.Root().GetComponent<NetComponent>();
             using Session session = netClientComponent.Create(StartSceneConfigCategory.Instance.Benchmark.OuterIPPort);
             List<ETTask> list = new List<ETTask>(100000);
 

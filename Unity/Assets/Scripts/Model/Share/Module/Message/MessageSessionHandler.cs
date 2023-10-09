@@ -64,7 +64,6 @@ namespace ET
                 long instanceId = session.InstanceId;
 
                 Response response = ObjectPool.Instance.Fetch<Response>();
-
                 try
                 {
                     await this.Run(session, request, response);

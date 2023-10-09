@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 
 namespace ET
 {
@@ -15,7 +14,7 @@ namespace ET
 
 		private Kcp kcp { get; set; }
 
-		private readonly Queue<MessageInfo> waitSendMessages = new();
+		private readonly Queue<MemoryBuffer> waitSendMessages = new();
 		
 		public readonly uint CreateTime;
 
@@ -30,6 +29,7 @@ namespace ET
 				this.Id = value;
 			}
 		}
+		
 		public uint RemoteConn { get; set; }
 
 		private readonly byte[] sendCache = new byte[2 * 1024];
@@ -51,7 +51,7 @@ namespace ET
 			}
 			set
 			{
-				this.remoteAddress = new IPEndPointNonAlloc(value.Address, value.Port);
+				this.remoteAddress = value;
 			}
 		}
 
@@ -64,14 +64,14 @@ namespace ET
 					this.kcp.SetWindowSize(1024, 1024);
 					this.kcp.SetMtu(1400); // 默认1400
 					this.kcp.SetMinrto(30);
-					this.kcp.InitArrayPool(1600, 10000);
+					this.kcp.SetArrayPool(this.Service.byteArrayPool);
 					break;
 				case ServiceType.Outer:
 					this.kcp.SetNoDelay(1, 10, 2, true);
 					this.kcp.SetWindowSize(256, 256);
 					this.kcp.SetMtu(470);
 					this.kcp.SetMinrto(30);
-					this.kcp.InitArrayPool(600, 10000);
+					this.kcp.SetArrayPool(this.Service.byteArrayPool);
 					break;
 			}
 
@@ -80,12 +80,13 @@ namespace ET
 		// connect
 		public KChannel(uint localConn, IPEndPoint remoteEndPoint, KService kService)
 		{
+			this.Service = kService;
 			this.LocalConn = localConn;
 			this.ChannelType = ChannelType.Connect;
 			
 			Log.Info($"channel create: {this.LocalConn} {remoteEndPoint} {this.ChannelType}");
 			
-			this.Service = kService;
+			
 			this.RemoteAddress = remoteEndPoint;
 			this.CreateTime = kService.TimeNow;
 
@@ -96,11 +97,10 @@ namespace ET
 		// accept
 		public KChannel(uint localConn, uint remoteConn, IPEndPoint remoteEndPoint, KService kService)
 		{
+			this.Service = kService;
 			this.ChannelType = ChannelType.Accept;
 			
 			Log.Info($"channel create: {localConn} {remoteConn} {remoteEndPoint} {this.ChannelType}");
-
-			this.Service = kService;
 			this.LocalConn = localConn;
 			this.RemoteConn = remoteConn;
 			this.RemoteAddress = remoteEndPoint;
@@ -162,8 +162,8 @@ namespace ET
 					break;
 				}
 				
-				MessageInfo buffer = this.waitSendMessages.Dequeue();
-				this.Send(buffer.ActorId, buffer.MessageObject);
+				MemoryBuffer buffer = this.waitSendMessages.Dequeue();
+				this.Send(buffer);
 			}
 		}
 
@@ -200,7 +200,7 @@ namespace ET
 				buffer.WriteTo(0, KcpProtocalType.SYN);
 				buffer.WriteTo(1, this.LocalConn);
 				buffer.WriteTo(5, this.RemoteConn);
-				this.Service.Socket.SendTo(buffer, 0, 9, SocketFlags.None, this.RemoteAddress);
+				this.Service.Transport.Send(buffer, 0, 9, this.RemoteAddress);
 				// 这里很奇怪 调用socket.LocalEndPoint会动到this.RemoteAddressNonAlloc里面的temp，这里就不仔细研究了
 				Log.Info($"kchannel connect {this.LocalConn} {this.RemoteConn} {this.RealAddress}");
 
@@ -249,7 +249,7 @@ namespace ET
 			this.Service.AddToUpdate(nextUpdateTime, this.Id);
 		}
 
-		public unsafe void HandleRecv(byte[] date, int offset, int length)
+		public void HandleRecv(byte[] date, int offset, int length)
 		{
 			if (this.IsDisposed)
 			{
@@ -333,21 +333,13 @@ namespace ET
 						}
 					}
 				}
-
-
-				switch (this.Service.ServiceType)
-				{
-					case ServiceType.Inner:
-						this.readMemory.Seek(Packet.ActorIdLength + Packet.OpcodeLength, SeekOrigin.Begin);
-						break;
-					case ServiceType.Outer:
-						this.readMemory.Seek(Packet.OpcodeLength, SeekOrigin.Begin);
-						break;
-				}
+				
 				MemoryBuffer memoryBuffer = this.readMemory;
 				this.readMemory = null;
+				
+				memoryBuffer.Seek(0, SeekOrigin.Begin);
+				
 				this.OnRead(memoryBuffer);
-				this.Service.Recycle(memoryBuffer);
 			}
 		}
 
@@ -374,36 +366,21 @@ namespace ET
 				bytes.WriteTo(0, KcpProtocalType.MSG);
 				// 每个消息头部写下该channel的id;
 				bytes.WriteTo(1, this.LocalConn);
-				this.Service.Socket.SendTo(bytes, 0, count + 5, SocketFlags.None, this.RemoteAddress);
+				this.Service.Transport.Send(bytes, 0, count + 5, this.RemoteAddress);
 			}
 			catch (Exception e)
 			{
 				Log.Error(e);
-				this.OnError(ErrorCore.ERR_SocketCantSend);
 			}
 		}
 
-        private void KcpSend(ActorId actorId, MemoryBuffer memoryStream)
+        private void KcpSend(MemoryBuffer memoryStream)
 		{
 			if (this.IsDisposed)
 			{
 				return;
 			}
 			
-			switch (this.Service.ServiceType)
-			{
-				case ServiceType.Inner:
-				{
-					memoryStream.GetBuffer().WriteTo(0, actorId);
-					break;
-				}
-				case ServiceType.Outer:
-				{
-					// 外网不需要发送actorId，跳过
-					memoryStream.Seek(Packet.ActorIdLength, SeekOrigin.Begin);
-					break;
-				}
-			}
 			int count = (int) (memoryStream.Length - memoryStream.Position);
 
 			// 超出maxPacketSize需要分片
@@ -436,24 +413,17 @@ namespace ET
 			this.Service.AddToUpdate(0, this.Id);
 		}
 		
-		public void Send(ActorId actorId, MessageObject message)
+		public void Send(MemoryBuffer memoryBuffer)
 		{
 			if (!this.IsConnected)
 			{
-				MessageInfo messageInfo = new() { ActorId = actorId, MessageObject = message };
-				this.waitSendMessages.Enqueue(messageInfo);
+				this.waitSendMessages.Enqueue(memoryBuffer);
 				return;
 			}
-
-			MemoryBuffer stream = this.Service.Fetch();
-			MessageSerializeHelper.MessageToStream(stream, message);
-			message.Dispose();
-
 			if (this.kcp == null)
 			{
 				throw new Exception("kchannel connected but kcp is zero!");
 			}
-			
 			// 检查等待发送的消息，如果超出最大等待大小，应该断开连接
 			int n = this.kcp.WaitSnd;
 			int maxWaitSize = 0;
@@ -475,41 +445,15 @@ namespace ET
 				this.OnError(ErrorCore.ERR_KcpWaitSendSizeTooLarge);
 				return;
 			}
-
-			this.KcpSend(actorId, stream);
-			
-			this.Service.Recycle(stream);
+			this.KcpSend(memoryBuffer);
+			this.Service.Recycle(memoryBuffer);
 		}
 		
 		private void OnRead(MemoryBuffer memoryStream)
 		{
 			try
 			{
-				long channelId = this.Id;
-				object message = null;
-				ActorId actorId = default;
-				switch (this.Service.ServiceType)
-				{
-					case ServiceType.Outer:
-					{
-						ushort opcode = BitConverter.ToUInt16(memoryStream.GetBuffer(), Packet.KcpOpcodeIndex);
-						Type type = OpcodeType.Instance.GetType(opcode);
-						message = MessageSerializeHelper.Deserialize(type, memoryStream);
-						break;
-					}
-					case ServiceType.Inner:
-					{
-						byte[] buffer = memoryStream.GetBuffer();
-						actorId.Process = BitConverter.ToInt32(buffer, Packet.ActorIdIndex);
-						actorId.Fiber = BitConverter.ToInt32(buffer, Packet.ActorIdIndex + 4);
-						actorId.InstanceId = BitConverter.ToInt64(buffer, Packet.ActorIdIndex + 8);
-						ushort opcode = BitConverter.ToUInt16(memoryStream.GetBuffer(), Packet.OpcodeIndex);
-						Type type = OpcodeType.Instance.GetType(opcode);
-						message = MessageSerializeHelper.Deserialize(type, memoryStream);
-						break;
-					}
-				}
-				this.Service.ReadCallback(channelId, actorId, message);
+				this.Service.ReadCallback(this.Id, memoryStream);
 			}
 			catch (Exception e)
 			{

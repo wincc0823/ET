@@ -51,6 +51,7 @@ namespace ET.Server
                 return;
             }
 
+            Fiber fiber = self.Fiber();
             // 通知订阅该Cell Leave的Unit
             aoiEntity.Cell.Remove(aoiEntity);
             foreach (KeyValuePair<long, AOIEntity> kv in aoiEntity.Cell.SubsLeaveEntities)
@@ -70,7 +71,7 @@ namespace ET.Server
                 Cell cell = self.GetCell(cellId);
                 aoiEntity.UnSubLeave(cell);
             }
-
+    
             // 检查
             if (aoiEntity.SeeUnits.Count > 1)
             {

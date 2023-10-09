@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.WebSockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace ET
 {
@@ -15,7 +16,7 @@ namespace ET
 
         private readonly WebSocket webSocket;
 
-        private readonly Queue<MessageObject> queue = new();
+        private readonly Queue<MemoryBuffer> queue = new();
 
         private bool isSending;
 
@@ -23,12 +24,12 @@ namespace ET
         
         public IPEndPoint RemoteAddress { get; set; }
 
-        private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-
+        private CancellationTokenSource cancellationTokenSource = new();
+        
         public WChannel(long id, HttpListenerWebSocketContext webSocketContext, WService service)
         {
-            this.Id = id;
             this.Service = service;
+            this.Id = id;
             this.ChannelType = ChannelType.Accept;
             this.WebSocketContext = webSocketContext;
             this.webSocket = webSocketContext.WebSocket;
@@ -44,8 +45,8 @@ namespace ET
 
         public WChannel(long id, WebSocket webSocket, string connectUrl, WService service)
         {
-            this.Id = id;
             this.Service = service;
+            this.Id = id;
             this.ChannelType = ChannelType.Connect;
             this.webSocket = webSocket;
 
@@ -68,7 +69,7 @@ namespace ET
             this.webSocket.Dispose();
         }
 
-        public async ETTask ConnectAsync(string url)
+        private async ETTask ConnectAsync(string url)
         {
             try
             {
@@ -85,9 +86,9 @@ namespace ET
             }
         }
 
-        public void Send(MessageObject message)
+        public void Send(MemoryBuffer memoryBuffer)
         {
-            this.queue.Enqueue(message);
+            this.queue.Enqueue(memoryBuffer);
 
             if (this.isConnected)
             {
@@ -119,22 +120,8 @@ namespace ET
                         return;
                     }
 
-                    MessageObject message = this.queue.Dequeue();
-
-                    MemoryBuffer stream = this.Service.Fetch();
-                    
-                    MessageSerializeHelper.MessageToStream(stream, message);
-                    message.Dispose();
+                    MemoryBuffer stream = this.queue.Dequeue();
             
-                    switch (this.Service.ServiceType)
-                    {
-                        case ServiceType.Inner:
-                            break;
-                        case ServiceType.Outer:
-                            stream.Seek(Packet.ActorIdLength, SeekOrigin.Begin);
-                            break;
-                    }
-                    
                     try
                     {
                         await this.webSocket.SendAsync(stream.GetMemory(), WebSocketMessageType.Binary, true, cancellationTokenSource.Token);
@@ -145,6 +132,10 @@ namespace ET
                         {
                             return;
                         }
+                    }
+                    catch (TaskCanceledException e)
+                    {
+                        Log.Warning(e.ToString());
                     }
                     catch (Exception e)
                     {
@@ -205,10 +196,9 @@ namespace ET
 
                     MemoryBuffer memoryBuffer = this.Service.Fetch(receiveCount);
                     memoryBuffer.SetLength(receiveCount);
-                    memoryBuffer.Seek(2, SeekOrigin.Begin);
+                    memoryBuffer.Seek(0, SeekOrigin.Begin);
                     Array.Copy(this.cache, 0, memoryBuffer.GetBuffer(), 0, receiveCount);
                     this.OnRead(memoryBuffer);
-                    this.Service.Recycle(memoryBuffer);
                 }
             }
             catch (Exception e)
@@ -222,24 +212,11 @@ namespace ET
         {
             try
             {
-                long channelId = this.Id;
-                object message = null;
-                switch (this.Service.ServiceType)
-                {
-                    case ServiceType.Outer:
-                    {
-                        ushort opcode = BitConverter.ToUInt16(memoryStream.GetBuffer(), Packet.KcpOpcodeIndex);
-                        Type type = OpcodeType.Instance.GetType(opcode);
-                        message = MessageSerializeHelper.Deserialize(type, memoryStream);
-                        break;
-                    }
-                }
-                this.Service.ReadCallback(channelId, new ActorId(), message);
+                this.Service.ReadCallback(this.Id, memoryStream);
             }
             catch (Exception e)
             {
-                Log.Error($"{this.RemoteAddress} {memoryStream.Length} {e}");
-                // 出现任何消息解析异常都要断开Session，防止客户端伪造消息
+                Log.Error(e);
                 this.OnError(ErrorCore.ERR_PacketParserError);
             }
         }

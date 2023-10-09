@@ -5,75 +5,128 @@ namespace ET
 {
     public static class Log
     {
-        [Conditional("DEBUG")]
-        public static void Trace(string msg)
-        {
-            Logger.Instance.Trace(msg);
-        }
+        private const int TraceLevel = 1;
+        private const int DebugLevel = 2;
+        private const int InfoLevel = 3;
+        private const int WarningLevel = 4;
 
+        private static ILog GetLog()
+        {
+            return Fiber.Instance != null? Fiber.Instance.Log : Logger.Instance.Log;
+        }
+        
         [Conditional("DEBUG")]
         public static void Debug(string msg)
         {
-            Logger.Instance.Debug(msg);
+            if (Options.Instance.LogLevel > DebugLevel)
+            {
+                return;
+            }
+
+            GetLog().Debug(msg);
+        }
+        
+        [Conditional("DEBUG")]
+        public static void Trace(string msg)
+        {
+            if (Options.Instance.LogLevel > TraceLevel)
+            {
+                return;
+            }
+            StackTrace st = new(1, true);
+            GetLog().Trace($"{msg}\n{st}");
         }
 
         public static void Info(string msg)
         {
-            Logger.Instance.Info(msg);
+            if (Options.Instance.LogLevel > InfoLevel)
+            {
+                return;
+            }
+            GetLog().Info(msg);
         }
 
-        [Conditional("DEBUG")]
+        public static void TraceInfo(string msg)
+        {
+            if (Options.Instance.LogLevel > InfoLevel)
+            {
+                return;
+            }
+            StackTrace st = new(1, true);
+            GetLog().Trace($"{msg}\n{st}");
+        }
+
         public static void Warning(string msg)
         {
-            Logger.Instance.Warning(msg);
+            if (Options.Instance.LogLevel > WarningLevel)
+            {
+                return;
+            }
+            GetLog().Warning(msg);
         }
 
         public static void Error(string msg)
         {
-            Logger.Instance.Error(msg);
+            StackTrace st = new(1, true);
+            GetLog().Error($"{msg}\n{st}");
         }
 
-        public static void Error(Exception msg)
+        public static void Error(Exception e)
         {
-            Logger.Instance.Error(msg);
-        }
-
-        [Conditional("DEBUG")]
-        public static void Console(string msg)
-        {
-            Logger.Instance.Console(msg);
+            GetLog().Error(e.ToString());
         }
         
+        public static void Console(string msg)
+        {
+            if (Options.Instance.Console == 1)
+            {
+                System.Console.WriteLine(msg);
+            }
+            GetLog().Debug(msg);
+        }
+
 #if DOTNET
         [Conditional("DEBUG")]
         public static void Trace(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
         {
-            Logger.Instance.Trace(message.ToStringAndClear());
+            if (Options.Instance.LogLevel > TraceLevel)
+            {
+                return;
+            }
+            StackTrace st = new(1, true);
+            GetLog().Trace($"{message.ToStringAndClear()}\n{st.ToString()}");
         }
         [Conditional("DEBUG")]
         public static void Warning(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
         {
-            Logger.Instance.Warning(message.ToStringAndClear());
+            if (Options.Instance.LogLevel > WarningLevel)
+            {
+                return;
+            }
+            GetLog().Warning(ref message);
         }
 
         public static void Info(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
         {
-            Logger.Instance.Info(message.ToStringAndClear());
+            if (Options.Instance.LogLevel > InfoLevel)
+            {
+                return;
+            }
+            GetLog().Info(ref message);
         }
         [Conditional("DEBUG")]
         public static void Debug(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
         {
-            Logger.Instance.Debug(message.ToStringAndClear());
+            if (Options.Instance.LogLevel > DebugLevel)
+            {
+                return;
+            }
+            GetLog().Debug(ref message);
         }
 
         public static void Error(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
         {
-            Logger.Instance.Error(message.ToStringAndClear());
-        }
-        [Conditional("DEBUG")]
-        public static void Console(ref System.Runtime.CompilerServices.DefaultInterpolatedStringHandler message)
-        {
-            Logger.Instance.Console(message.ToStringAndClear());
+            GetLog().Error(ref message);
         }
 #endif
     }

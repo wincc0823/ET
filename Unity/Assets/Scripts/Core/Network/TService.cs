@@ -80,6 +80,7 @@ namespace ET
 			if (socketError != SocketError.Success)
 			{
 				Log.Error($"accept error {socketError}");
+				this.AcceptAsync();
 				return;
 			}
 
@@ -92,9 +93,9 @@ namespace ET
 				
 				this.AcceptCallback(channelId, channel.RemoteAddress);
 			}
-			catch (Exception exception)
+			catch (Exception e)
 			{
-				Log.Error(exception);
+				Log.Error(e);
 			}		
 			
 			// 开始新的accept
@@ -111,23 +112,19 @@ namespace ET
 			OnAcceptComplete(this.innArgs.SocketError, this.innArgs.AcceptSocket);
 		}
 
-		private TChannel Create(IPEndPoint ipEndPoint, long id)
-		{
-			TChannel channel = new TChannel(id, ipEndPoint, this);
-			this.idChannels.Add(channel.Id, channel);
-			return channel;
-		}
-
-		public override void Create(long id, IPEndPoint address)
+		public override void Create(long id, string address)
 		{
 			if (this.idChannels.TryGetValue(id, out TChannel _))
 			{
 				return;
 			}
-			this.Create(address, id);
+
+			IPEndPoint endPoint = NetworkHelper.ToIPEndPoint(address);
+			TChannel channel = new(id, endPoint, this);
+			this.idChannels.Add(channel.Id, channel);
 		}
 		
-		private TChannel Get(long id)
+		public TChannel Get(long id)
 		{
 			TChannel channel = null;
 			this.idChannels.TryGetValue(id, out channel);
@@ -160,7 +157,7 @@ namespace ET
 			this.idChannels.Remove(id);
 		}
 
-		public override void Send(long channelId, ActorId actorId, MessageObject message)
+		public override void Send(long channelId, MemoryBuffer memoryBuffer)
 		{
 			try
 			{
@@ -171,7 +168,7 @@ namespace ET
 					return;
 				}
 				
-				aChannel.Send(actorId, message);
+				aChannel.Send(memoryBuffer);
 			}
 			catch (Exception e)
 			{
@@ -189,7 +186,6 @@ namespace ET
 				}
 				
 				SocketAsyncEventArgs e = result.SocketAsyncEventArgs;
-
 				if (e == null)
 				{
 					switch (result.Op)

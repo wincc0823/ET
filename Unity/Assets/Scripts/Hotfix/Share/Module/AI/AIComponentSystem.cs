@@ -41,9 +41,10 @@ namespace ET
 
         private static void Check(this AIComponent self)
         {
+            Fiber fiber = self.Fiber();
             if (self.Parent == null)
             {
-                self.Fiber().TimerComponent.Remove(ref self.Timer);
+                fiber.TimerComponent.Remove(ref self.Timer);
                 return;
             }
 
@@ -72,7 +73,7 @@ namespace ET
                 }
 
                 self.Cancel(); // 取消之前的行为
-                ETCancellationToken cancellationToken = new ETCancellationToken();
+                ETCancellationToken cancellationToken = new();
                 self.CancellationToken = cancellationToken;
                 self.Current = aiConfig.Id;
 

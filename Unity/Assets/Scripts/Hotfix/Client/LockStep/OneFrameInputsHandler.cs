@@ -8,7 +8,6 @@ namespace ET.Client
         protected override async ETTask Run(Scene root, OneFrameInputs input)
         {
             using var _ = input ; // 方法结束时回收消息
-            
             Room room = root.GetComponent<Room>();
             
             Log.Debug($"OneFrameInputs: {room.AuthorityFrame + 1} {input.ToJson()}");
